@@ -1,0 +1,260 @@
+<h1>About mercurial-server</h1>
+<p>Home page: <a href="http://www.lshift.net/mercurial-server.html">http://www.lshift.net/mercurial-server.html</a></p>
+<p>mercurial-server gives your developers remote read/write access to centralized <a href="http://hg-scm.org/">Mercurial</a> repositories using SSH public key authentication; it provides convenient and fine-grained key management and access control. It provides access control for <a href="http://mercurial.selenic.com/wiki/Phases">phases</a> move (from "draft" to "public").</p>
+<p>Though mercurial-server is currently targeted at Debian-based systems such as Ubuntu, other users have reported success getting it running on other Unix-based systems such as Red Hat. Running it on a non-Unix system such as Windows is not supported. You will need root privileges to install it.</p>
+<h1>Step by step</h1>
+<p>mercurial-server authenticates users not using passwords but using SSH public keys; everyone who wants access to a mercurial-server repository will need such a key. In combination with <code>ssh-agent</code> (or equivalents such as the Windows program <a href="http://the.earth.li/~sgtatham/putty/0.60/htmldoc/Chapter9.html#pageant">Pageant</a>), this means that users will not need to type in a password to access the repository. If you're not familiar with SSH public keys, the <a href="http://sial.org/howto/openssh/publickey-auth/">OpenSSH Public Key Authentication tutorial</a> may be helpful.</p>
+<p>When mercurial-server is installed, a new user account called hg will be created; this user's home directory will be where all repositories will be stored, so you should ensure that it has enough space and suchlike.</p>
+<h2>Initial access to mercurial-server</h2>
+<p>In what follows, we assume that your username is jay, that you usually sit at a machine called spoon and you have installed mercurial-server on jeeves using the package management system (see the README for more on installation). We assume that you have created your SSH public key, set up your SSH agent with this key, and that this key gives you access to jeeves.</p>
+<pre><code>jay@spoon:~$ ssh -A jeeves
+jay@jeeves:~$ ssh-add -L &gt; my-key
+jay@jeeves:~$ sudo mkdir -p /etc/mercurial-server/keys/root/jay
+jay@jeeves:~$ sudo cp my-key /etc/mercurial-server/keys/root/jay/spoon
+jay@jeeves:~$ sudo -u hg /usr/share/mercurial-server/refresh-auth
+jay@jeeves:~$ exit
+Connection to jeeves closed.
+jay@spoon:~$ </code></pre>
+<p>You can now create repositories on the remote machine and have complete read-write access to all of them.</p>
+<h2>Creating repositories</h2>
+<p>To store a repository on the server, clone it over.</p>
+<pre><code>jay@spoon:~$ hg init myproj
+jay@spoon:~$ cd myproj
+jay@spoon:~/myproj$ editor program.c ...create project files here...
+jay@spoon:~/myproj$ hg add
+adding program.c
+jay@spoon:~/myproj$ hg commit -m &quot;Initial checkin&quot;
+jay@spoon:~/myproj$ hg clone . ssh://hg@jeeves/jays/project
+searching for changes
+remote: adding changesets
+remote: adding manifests
+remote: adding file changes
+remote: added 1 changesets with 1 changes to 1 files
+jay@spoon:~/myproj$ hg pull ssh://hg@jeeves/jays/project
+pulling from ssh://hg@jeeves/jays/project
+searching for changes
+no changes found
+jay@spoon:~/myproj$ cd ..
+jay@spoon:~$ </code></pre>
+<h2>Adding other users</h2>
+<p>At this stage, no-one but you has any access to any repositories you create on this system. In order to give anyone else access, you'll need a copy of their SSH public key; we'll assume you have that key in <code>~/sam-saucer-key.pub</code>. To manage access, you make changes to the special <code>hgadmin</code> repository.</p>
+<pre><code>jay@spoon:~$ hg clone ssh://hg@jeeves/hgadmin
+destination directory: hgadmin
+no changes found
+updating working directory
+0 files updated, 0 files merged, 0 files removed, 0 files unresolved
+jay@spoon:~$ cd hgadmin
+jay@spoon:~/hgadmin$ mkdir -p keys/users/sam
+jay@spoon:~/hgadmin$ cp ~/sam-saucer-key.pub keys/users/sam/saucer
+jay@spoon:~/hgadmin$ hg add
+adding keys/users/sam/saucer
+jay@spoon:~/hgadmin$ hg commit -m &quot;Add Sam&#39;s key&quot;
+jay@spoon:~/hgadmin$ hg push
+pushing to ssh://hg@jeeves/hgadmin
+searching for changes
+remote: adding changesets
+remote: adding manifests
+remote: adding file changes
+remote: added 1 changesets with 1 changes to 1 files
+jay@spoon:~/hgadmin$ </code></pre>
+<p>Sam can now read and write to your <a href="ssh://hg@jeeves/jays/project">ssh://hg@jeeves/jays/project</a> repository. Most other changes to access control can be made simply by making and pushing changes to <code>hgadmin</code>, and you can use Mercurial to cooperate with other root users in the normal way.</p>
+<p>If you prefer, you could give them access by logging into jeeves, putting the key in the right place under <code>/etc/mercurial-server/keys</code>, and re-running <code>sudo -u hg /usr/share/mercurial-server/refresh-auth</code>. However, using <code>hgadmin</code> is usually more convenient if you need to make more than a very few changes; it also makes it easier to share administration with others and provides a log of all changes.</p>
+<h1>Access control</h1>
+<p>Out of the box, mercurial-server supports two kinds of users: "root" users and normal users. If you followed the steps above, you are a "root" user because your key is under <code>keys/root</code>, while the other user you gave access to is a normal user since their key is under <code>keys/users</code>. Keys that are not in either of these directories will by default have no access to anything.</p>
+<p>Root users can edit <code>hgadmin</code>, create new repositories and read and write to existing ones. Normal users cannot access <code>hgadmin</code> or create new repositories, but they can read and write to any other repository.</p>
+<h2>Using access.conf</h2>
+<p>mercurial-server offers much more fine-grained access control than this division into two classes of users. Let's suppose you wish to give Pat access to the <code>widget</code> repository, but no other. We first copy Pat's SSH public key into the <code>keys/pat</code> directory in <code>hgadmin</code>. This tells mercurial-server about Pat's key, but gives Pat no access to anything because the key is not under either <code>keys/root</code> or <code>keys/users</code>. To grant this key access, we must give mercurial-server a new access rule, so we create a file in <code>hgadmin</code> called <code>access.conf</code>, with the following contents:</p>
+<pre><code># Give Pat access to the &quot;widget&quot; repository
+write repo=widget user=pat/*</code></pre>
+<p>Pat will have read and write access to the <code>widget</code> repository as soon as we add, commit, and push these files.</p>
+<p>Placing the same key in multiple directories will <em>not</em> grant that user multiple powers. One of the locations will be used for all permission checks, while any others will be ignored. Instead, put each key under the keys directory only once, and use <code>access.conf</code> to give permissions to the key.</p>
+<p>Each line of <code>access.conf</code> has the following syntax:</p>
+<pre><code>rule condition condition...</code></pre>
+<p>Blank lines and lines that start with <code>#</code> are ignored. Rule is one of</p>
+<ul>
+<li>init
+: allow reads, writes, publish (move the phase of a chageset to "public"), and the creation of new repositories</li>
+<li>publish
+: allow reads, writes and publish changesets</li>
+<li>write
+: allow reads and writes (ie. create draft changesets)</li>
+<li>read
+: allow only read operations</li>
+<li>deny
+: deny all requests</li>
+</ul>
+<p>The distinction between "write" and "publish" access levels is only meaningful for non-publishing repositories, in which case, the "write" access level allows a user to push "draft" changesets, but not to change their phase to "public". This latter operation require the "publish" access level.</p>
+<p>A condition is a globpattern matched against a relative path. The two most important conditions are</p>
+<ul>
+<li>user=
+globpattern
+: path to the user's key</li>
+<li>repo=
+globpattern
+: path to the repository</li>
+</ul>
+<p><code>*</code> only matches one directory level, where <code>**</code> matches as many as you want. More precisely, <code>*</code> matches zero or more characters not including <code>/</code> while <code>**</code> matches zero or more characters including <code>/</code>. So <code>projects/*</code> matches <code>projects/foo</code> but not <code>projects/foo/bar</code>, while <code>projects/**</code> matches both.</p>
+<p>When considering a request, mercurial-server steps through all the rules in <code>/etc/mercurial-server/access.conf</code> and then all the rules in <code>access.conf</code> in <code>hgadmin</code> looking for a rule which matches on every condition. The first match determines whether the request will be allowed; if there is no match in either file, the request will be denied.</p>
+<p>By default, <code>/etc/mercurial-server/access.conf</code> has the following rules:</p>
+<pre><code>init user=root/**
+deny repo=hgadmin
+write user=users/**</code></pre>
+<p>These rules ensure that root users can do any operation on any repository, that no other users can access the <code>hgadmin</code> repository, and that those with keys in <code>keys/users</code> can read or write to any repository but not create repositories. Some examples of how these rules work:</p>
+<ul>
+<li>User
+root/jay
+creates a repository
+foo/bar/baz
+. This matches the first rule and so will be allowed.</li>
+<li>User
+root/jay
+changes repository
+hgadmin
+. Again, this matches the first rule and so will be allowed; later rules have no effect.</li>
+<li>User
+users/sam
+tries to read repository
+hgadmin
+. This does not match the first rule, but matches the second, and so will be denied.</li>
+<li>User
+users/sam
+tries to create repository
+sams-project
+. This does not match the first two rules, but matches the third; this is a
+write
+rule, which doesn't grant the privilege to create repositories, so the request will be denied.</li>
+<li>User
+users/sam
+writes to existing repository
+projects/main
+. Again, this matches the third rule, which allows the request.</li>
+<li>User
+pat
+tries to write to existing repository
+widget
+. Until we change the
+access.conf
+file in
+hgadmin
+, this will match no rule, and so will be denied.</li>
+<li>Any request from a user whose key not under the
+keys
+directory at all will always be denied, no matter what rules are in effect; because of the way SSH authentication works, they will be prompted to enter a password, but no password will work. This can't be changed.</li>
+</ul>
+<h2>/etc/mercurial-server and hgadmin</h2>
+<p>mercurial-server consults two distinct locations to collect information about what to allow: <code>/etc/mercurial-server</code> and its own <code>hgadmin</code> repository. This is useful for several reasons:</p>
+<ul>
+<li>Some users may not need the convenience of access control via mercurial; for these users updating
+/etc/mercurial-server
+may offer a simpler route.</li>
+<li>/etc/mercurial-server
+is suitable for management with tools such as
+Puppet</li>
+<li>If a change to
+hgadmin
+leaves you "locked out",
+/etc/mercurial-server
+allows you a way back in.</li>
+<li>At install time, all users are "locked out", and so some mechanism to allow some users in is needed.</li>
+</ul>
+<p>Rules in <code>/etc/mercurial-server/access.conf</code> are checked before those in <code>hgadmin</code>, and keys in <code>/etc/mercurial-server/keys</code> will be present no matter how <code>hgadmin</code> changes.</p>
+<p>We anticipate that once mercurial-server is successfully installed and working you will usually want to use <code>hgadmin</code> for most access control tasks. Once you have the right keys and <code>access.conf</code> set up in <code>hgadmin</code>, you can delete <code>/etc/mercurial-server/access.conf</code> and all of <code>/etc/mercurial-server/keys</code>, turning control entirely over to <code>hgadmin</code>.</p>
+<p><code>/etc/mercurial-server/remote-hgrc.d</code> is in the HGRCPATH for all remote access to mercurial-server repositories. This directory contains the hooks that mercurial-server uses for access control and logging. You can add hooks to this directory, but obviously breaking the existing hooks will disable the relevant functionality and isn't advisable.</p>
+<h2>File and branch conditions</h2>
+<p>mercurial-server supports file and branch conditions, which restrict an operation depending on what files it modifies and what branch the work is on.</p>
+<blockquote>
+<p><strong>Caution</strong></p>
+The way these conditions work is subtle and can be counterintuitive. Unless you need what they provide, ignore this section, stick to user and repo conditions, and then things are likely to work the way you would expect. If you do need what they provide, read what follows very carefully.
+</blockquote>
+<p>File and branch conditions are added to the conditions against which a rule matches, just like user and repo conditions; they have this form:</p>
+<ul>
+<li>file=
+globpattern
+: file within the repo</li>
+<li>branch=
+globpattern
+: Mercurial branch name</li>
+</ul>
+<p>However, in order to understand what effect adding these conditions will have, it helps to understand how and when these rules are applied.</p>
+<p>The rules file is used to make three decisions:</p>
+<ul>
+<li>Whether to allow a repository to be created</li>
+<li>Whether to allow any access to a repository</li>
+<li>Whether to allow a changeset</li>
+</ul>
+<p>When the first two of these decisions are being made, nothing is known about any changsets that might be pushed, and so all file and branch conditions automatically succeed for the purpose of such decisions. For the third condition, every file changed in the changeset must be allowed by a <code>write</code> or <code>init</code> rule for the changeset to be allowed.</p>
+<p>This means that doing tricky things with file conditions can have counterintuitive consequences:</p>
+<ul>
+<li><p>You cannot limit read access to a subset of a repository with a <code>read</code> rule and a file condition: any user who has access to a repository can read all of it and its full history. Such a rule can only have the effect of masking a later <code>write</code> rule, as in this example:</p>
+<pre><code>read repo=specialrepo file=dontwritethis
+write repo=specialrepo</code></pre>
+<p>allows all users to read <code>specialrepo</code>, and to write to all files <em>except</em> that any changeset which writes to <code>dontwritethis</code> will be rejected.</p></li>
+<li>For similar reasons, don't give
+init
+rules file conditions.</li>
+<li><p>Don't try to deny write access to a particular file on a particular branch—a developer can write to the file on another branch and then merge it in. Either deny all writes to the branch from that user, or allow them to write to all the files they can write to on any branch.</p>
+<pre><code>write user=docs/* branch=docs file=docs/*</code></pre>
+<p>This rule grants users whose keys are in the <code>docs</code> subdirectory the power to push changesets into any repository only if those changesets are on the <code>docs</code> branch and they affect only those files directly under the <code>docs</code> directory. However, the rules below have more counterintuitive consequences.</p>
+<pre><code>write user=docs/* branch=docs
+write user=docs/* file=docs/*
+read user=docs/*</code></pre>
+<p>These rules grant users whose keys are in the <code>docs</code> subdirectory the power to change any file directly under the <code>docs</code> directory, or any file at all in the <code>docs</code> branch. Indirectly, however, this adds up to the power to change any file on any branch, simply by making the change on the docs branch and then merging the change into another branch.</p></li>
+</ul>
+<h1>In detail</h1>
+<h2>How mercurial-server works</h2>
+<p>All of the repositories controlled by mercurial-server are owned by a single user, the hg user, which is why all URLs for mercurial-server repositories start with <a href="ssh://hg@...">ssh://hg@...</a>. Each SSH key that has access to the repository has an entry in <code>~hg/.ssh/authorized_keys</code>; this is how the SSH daemon knows to give that key access. When the user connects over SSH, their commands are run in a custom restricted shell; this shell knows which key was used to connect, determines what the user is trying to do, checks the access rules to decide whether to allow it, and if allowed invokes Mercurial internally, without forking.</p>
+<p>This restricted shell also ensures that certain Mercurial extensions are loaded when the user acts on a repository; these extensions check the access control rules for any changeset that the user tries to commit, and log all pushes and pulls into a per-repository access log.</p>
+<p><code>refresh-auth</code> recurses through the <code>/etc/mercurial-server/keys</code> and the <code>keys</code> directory in the <code>hgadmin</code> repository, creating an entry in <code>~hg/.ssh/authorized_keys</code> for each one. This is redone automatically whenever a change is pushed to <code>hgadmin</code>.</p>
+<h2>Security</h2>
+<p>mercurial-server relies entirely on <code>sshd</code> to grant access to remote users. As a result, it runs no daemons, installs no setuid programs, and no part of it runs as root except the install process: all programs run as the user hg. Any attack on mercurial-server can only be started if the attacker already has a public key in <code>~hg/.ssh/authorized_keys</code>, otherwise <code>sshd</code> will bar the way.</p>
+<p>No matter what command the user tries to run on the remote system via SSH, mercurial-server is run. It parses the command line the user asked for, and interprets and runs the corresponding operation itself if access is allowed, so users can only read and add to history within repositories; they cannot run any other command. In addition, every push and pull is logged with a datestamp, changeset ID and the key that performed the operation.</p>
+<p>However, while the first paragraph holds no matter what bugs mercurial-server contains, the second depends on the relevant code being correct; though the entire codebase is short, like all software mercurial-server may harbour bugs. Backups are essential!</p>
+<h2>Logging</h2>
+<p>Every successful access is logged in a file called <code>~hg/repos/repository/.hg/mercurial-server.log</code>. This file is in YAML format for easy parsing, but if you don't like YAML, simply treat each line as a JSON data structure prepended with <code>- </code>. The log records the time as a UTC ISO 8601 time, the operation ("push" or "pull"), the path to the key as used in the access rules, the SSH connection information (including the source IP address), and the hex changeset IDs.</p>
+<h2>Paths and configuration</h2>
+<p>For security reasons, all mercurial-server code runs as the hg user. The first thing this code reads when it starts is <code>~hg/.mercurial-server</code>; if this file is absent or corrupt the code won't run. This file specifies all of the file paths that mercurial-server uses. In particular, it specifies that mercurial-server always uses <code>HGRCPATH = /etc/mercurial-server/remote-hgrc.d</code> for remote operations, overriding any system <code>HGRCPATH</code>.</p>
+<p>By creating such a file with suitable entries, you can run mercurial-server as a user other than hg, or install it without root privileges; however I strongly recommend that if you need to do this, you use a user account that is used for no other purpose, and take the time to thoroughly understand how mercurial-server works before you attempt it.</p>
+<p>At install time the following <code>~hg/.mercurial-server</code> file is used:</p>
+<pre><code># WARNING: a .mercurial-server file in your home directory means
+# that refresh-auth can and will trash your ~/.ssh/authorized_keys file.
+
+[paths]
+repos = ~/repos
+authorized_keys = ~/.ssh/authorized_keys
+keys = /etc/mercurial-server/keys:~/repos/hgadmin/keys
+access = /etc/mercurial-server/access.conf:~/repos/hgadmin/access.conf
+
+[exceptions]
+# Allow the creation of mq repositories by default
+allowdots = .hg/patches
+
+[env]
+# Use a different hgrc for remote pulls - this way you can set
+# up access.py for everything at once without affecting local operations
+
+HGRCPATH = /etc/mercurial-server/remote-hgrc.d</code></pre>
+<p>The meaning of the entries are:</p>
+<ul>
+<li><p><code>[paths]</code></p>
+<ul>
+<li><p><code>repos</code>: directory under which all repositories are found. No remote user can reference any repo not under this directory. Here and throughout this section, where a path begins with <code>~/</code> the home directory is substituted - ie the directory in which the <code>.mercurial-server</code> file was found.</p></li>
+<li><p><code>authorized_keys</code>: this is the file that will be rewritten by refresh-auth, or whenever a checkin to the <code>hgadmin</code> repository is pushed.</p></li>
+<li><p><code>keys</code>: directories to scan for keys when rewriting <code>authorized_keys</code>.</p></li>
+<li><p><code>access</code>: files to read to determine the access rules. The files are effectively concatenated together in the order given.</p></li>
+</ul></li>
+<li><p><code>[exceptions]</code></p>
+<ul>
+<li><p><code>allowdots</code>: paths to allow even though they begin with dots. Dots at the start of a pathname component are disallowed unless they exactly match one of the tails given in this colon-separated list. The given exception allows MQ repositories to be pushed.</p></li>
+</ul></li>
+<li><p><code>[env]</code>: all entries in here are added to the Unix environment when users connect. The keys are converted to all-upper-case.</p>
+<ul>
+<li><p><code>HGRCPATH</code>: set the path that Mercurial uses to search for configuration files. At install time config files are placed on this path which set up access control and logging.</p></li>
+</ul></li>
+</ul>
+<h2>License</h2>
+<p>This program is free software; you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation; either version 2 of the License, or (at your option) any later version.</p>
+<p>This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.</p>
+<p>You should have received a copy of the GNU General Public License along with this program; if not, write to the Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.</p>
+<h2>Thanks</h2>
+<p>Thanks for reading this far. If you use mercurial-server, please tell me about it.</p>
+<p>Paul Crowley, <a href="mailto:paul@lshift.net">paul@lshift.net</a>, 2012</p>

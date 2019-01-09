@@ -1,0 +1,10 @@
+# WARNING: when these hooks run they will entirely destroy and rewrite
+# ~/.ssh/authorized_keys
+
+[extensions]
+hgext.purge =
+
+[hooks]
+changegroup.aaaab_update = hg update -C default > /dev/null
+changegroup.aaaac_purge = hg purge --all > /dev/null
+changegroup.refreshauth = python:mercurialserver.refreshauth.hook

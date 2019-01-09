@@ -1,0 +1,18 @@
+# WARNING: a .mercurial-server file in your home directory means
+# that refresh-auth can and will trash your ~/.ssh/authorized_keys file.
+
+[paths]
+repos = ~/repos
+authorized_keys = ~/.ssh/authorized_keys
+keys = /etc/mercurial-server/keys:~/repos/hgadmin/keys
+access = /etc/mercurial-server/access.conf:~/repos/hgadmin/access.conf
+
+[exceptions]
+# Allow the creation of mq repositories by default
+allowdots = .hg/patches
+
+[env]
+# Use a different hgrc for remote pulls - this way you can set
+# up access.py for everything at once without affecting local operations
+
+HGRCPATH = /etc/mercurial-server/remote-hgrc.d

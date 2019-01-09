@@ -1,0 +1,22 @@
+#!/usr/bin/env python
+"""
+Rewrite ~/.ssh/authorized_keys by recursing through key directories
+"""
+
+import sys
+import os
+from mercurialserver import refreshauth, config
+
+if len(sys.argv) != 1:
+    sys.stderr.write("refresh-auth: must be called with no arguments (%s)\n" % sys.argv)
+    sys.exit(-1)
+
+config.initExe()
+
+# To protect the authorized_keys file for innocent users, you have to have
+# a ~/.mercurial-server file to run this.
+if not config.configExists():
+    print >>sys.stderr, "Must be run as the 'hg' user"
+    sys.exit(-1)
+
+refreshauth.refreshAuth()
