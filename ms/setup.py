@@ -8,7 +8,7 @@ setup(
     package_dir = {'': 'src'},
     packages = ["mercurialserver"],
     requires = ["mercurial"],
-    scripts = ['src/hg-ssh', 'src/refresh-auth'],
+    scripts = ['src/refresh-auth'],
     data_files = [
         ('conf', [
             'src/conf/access.conf',
