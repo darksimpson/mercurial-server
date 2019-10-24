@@ -1,4 +1,4 @@
-FROM alpine:3.8
+FROM alpine:3.10.3
 
 MAINTAINER darksimpson
 LABEL version="1.0-ms1.3p1"
