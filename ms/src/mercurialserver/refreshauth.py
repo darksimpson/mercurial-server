@@ -13,7 +13,7 @@ goodkey = re.compile("[/A-Za-z0-9._-]+$")
 
 def refreshAuth():
     akeyfile = config.getAuthorizedKeysPath()
-    wrappercommand = config.getExePath() + "/hg-ssh"
+    wrappercommand = "/usr/bin/hg-ssh"
     prefix='no-pty,no-port-forwarding,no-X11-forwarding,no-agent-forwarding,command='
 
     if os.path.exists(akeyfile):
@@ -53,7 +53,7 @@ def refreshAuth():
                         kf.close()
                 for l in klines:
                     if len(l):
-                        akeys.write('%s"%s %s" %s\n' % (prefix, wrappercommand, keyname, l))
+                        akeys.write('%s"%s ~/repos/*" %s\n' % (prefix, wrappercommand, l))
     akeys.close()
     os.chmod(akeyfile + "_new", stat.S_IRUSR)
     os.rename(akeyfile + "_new", akeyfile)

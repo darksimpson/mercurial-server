@@ -1,4 +1,4 @@
-FROM alpine:3.8
+FROM alpine:3.10.3
 
 MAINTAINER darksimpson
 LABEL version="1.0-ms1.3p1"
@@ -17,7 +17,6 @@ RUN chown -R root:root /ms && \
     find /ms -type f -exec chmod 644 {} \; && \
     find /ms -type d -exec chmod 755 {} \; && \
     chmod 755 /ms/install.sh && \
-    chmod 755 /ms/src/hg-ssh && \
     chmod 755 /ms/src/refresh-auth
 
 RUN /ms/install.sh
